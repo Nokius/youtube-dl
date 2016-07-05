@@ -1,6 +1,6 @@
 Name:           youtube-dl
 Summary:        Download Youtube Video
-Version:        2016.07.50
+Version:        2016.07.05
 Release:        1%{?dist}
 License:        Public Domain dedication, see http://unlicense.org/
 Source0:        %{name}-%{version}.tar.gz 
