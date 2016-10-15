@@ -46,7 +46,7 @@ Make sure that someone has not already opened the issue you're trying to open. S
 
 ###  Why are existing options not enough?
 
-Before requesting a new feature, please have a quick peek at [the list of supported options](https://github.com/rg3/youtube-dl/blob/master/README.md#synopsis). Many feature requests are for features that actually exist already! Please, absolutely do show off your work in the issue report and detail how the existing similar options do *not* solve your problem.
+Before requesting a new feature, please have a quick peek at [the list of supported options](https://github.com/rg3/youtube-dl/blob/master/README.md#options). Many feature requests are for features that actually exist already! Please, absolutely do show off your work in the issue report and detail how the existing similar options do *not* solve your problem.
 
 ###  Is there enough context in your bug report?
 
@@ -85,7 +85,7 @@ To run the test, simply invoke your favorite test runner, or execute a test file
 If you want to create a build of youtube-dl yourself, you'll need
 
 * python
-* make (both GNU make and BSD make are supported)
+* make (only GNU make is supported)
 * pandoc
 * zip
 * nosetests

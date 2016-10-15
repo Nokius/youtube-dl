@@ -33,14 +33,18 @@ from youtube_dl.utils import (
     ExtractorError,
     find_xpath_attr,
     fix_xml_ampersands,
+    get_element_by_class,
     InAdvancePagedList,
     intlist_to_bytes,
     is_html,
     js_to_json,
     limit_length,
+    mimetype2ext,
+    month_by_name,
     ohdave_rsa_encrypt,
     OnDemandPagedList,
     orderedSet,
+    parse_age_limit,
     parse_duration,
     parse_filesize,
     parse_count,
@@ -80,6 +84,7 @@ from youtube_dl.utils import (
     cli_option,
     cli_valueless_option,
     cli_bool_option,
+    parse_codecs,
 )
 from youtube_dl.compat import (
     compat_chr,
@@ -287,6 +292,7 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(unified_strdate('25-09-2014'), '20140925')
         self.assertEqual(unified_strdate('27.02.2016 17:30'), '20160227')
         self.assertEqual(unified_strdate('UNKNOWN DATE FORMAT'), None)
+        self.assertEqual(unified_strdate('Feb 7, 2016 at 6:35 pm'), '20160207')
 
     def test_unified_timestamps(self):
         self.assertEqual(unified_timestamp('December 21, 2010'), 1292889600)
@@ -306,6 +312,8 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(unified_timestamp('25-09-2014'), 1411603200)
         self.assertEqual(unified_timestamp('27.02.2016 17:30'), 1456594200)
         self.assertEqual(unified_timestamp('UNKNOWN DATE FORMAT'), None)
+        self.assertEqual(unified_timestamp('May 16, 2016 11:15 PM'), 1463440500)
+        self.assertEqual(unified_timestamp('Feb 7, 2016 at 6:35 pm'), 1454870100)
 
     def test_determine_ext(self):
         self.assertEqual(determine_ext('http://example.com/foo/bar.mp4/?download'), 'mp4')
@@ -428,6 +436,20 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(
             url_basename('http://media.w3.org/2010/05/sintel/trailer.mp4'),
             'trailer.mp4')
+
+    def test_parse_age_limit(self):
+        self.assertEqual(parse_age_limit(None), None)
+        self.assertEqual(parse_age_limit(False), None)
+        self.assertEqual(parse_age_limit('invalid'), None)
+        self.assertEqual(parse_age_limit(0), 0)
+        self.assertEqual(parse_age_limit(18), 18)
+        self.assertEqual(parse_age_limit(21), 21)
+        self.assertEqual(parse_age_limit(22), None)
+        self.assertEqual(parse_age_limit('18'), 18)
+        self.assertEqual(parse_age_limit('18+'), 18)
+        self.assertEqual(parse_age_limit('PG-13'), 13)
+        self.assertEqual(parse_age_limit('TV-14'), 14)
+        self.assertEqual(parse_age_limit('TV-MA'), 17)
 
     def test_parse_duration(self):
         self.assertEqual(parse_duration(None), None)
@@ -607,6 +629,45 @@ class TestUtil(unittest.TestCase):
             limit_length('foo bar baz asd', 12).startswith('foo bar'))
         self.assertTrue('...' in limit_length('foo bar baz asd', 12))
 
+    def test_mimetype2ext(self):
+        self.assertEqual(mimetype2ext(None), None)
+        self.assertEqual(mimetype2ext('video/x-flv'), 'flv')
+        self.assertEqual(mimetype2ext('application/x-mpegURL'), 'm3u8')
+        self.assertEqual(mimetype2ext('text/vtt'), 'vtt')
+        self.assertEqual(mimetype2ext('text/vtt;charset=utf-8'), 'vtt')
+        self.assertEqual(mimetype2ext('text/html; charset=utf-8'), 'html')
+
+    def test_month_by_name(self):
+        self.assertEqual(month_by_name(None), None)
+        self.assertEqual(month_by_name('December', 'en'), 12)
+        self.assertEqual(month_by_name('décembre', 'fr'), 12)
+        self.assertEqual(month_by_name('December'), 12)
+        self.assertEqual(month_by_name('décembre'), None)
+        self.assertEqual(month_by_name('Unknown', 'unknown'), None)
+
+    def test_parse_codecs(self):
+        self.assertEqual(parse_codecs(''), {})
+        self.assertEqual(parse_codecs('avc1.77.30, mp4a.40.2'), {
+            'vcodec': 'avc1.77.30',
+            'acodec': 'mp4a.40.2',
+        })
+        self.assertEqual(parse_codecs('mp4a.40.2'), {
+            'vcodec': 'none',
+            'acodec': 'mp4a.40.2',
+        })
+        self.assertEqual(parse_codecs('mp4a.40.5,avc1.42001e'), {
+            'vcodec': 'avc1.42001e',
+            'acodec': 'mp4a.40.5',
+        })
+        self.assertEqual(parse_codecs('avc3.640028'), {
+            'vcodec': 'avc3.640028',
+            'acodec': 'none',
+        })
+        self.assertEqual(parse_codecs(', h264,,newcodec,aac'), {
+            'vcodec': 'h264',
+            'acodec': 'aac',
+        })
+
     def test_escape_rfc3986(self):
         reserved = "!*'();:@&=+$,/?#[]"
         unreserved = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~'
@@ -670,6 +731,9 @@ class TestUtil(unittest.TestCase):
 
         inp = '''{"foo":101}'''
         self.assertEqual(js_to_json(inp), '''{"foo":101}''')
+
+        inp = '''{"duration": "00:01:07"}'''
+        self.assertEqual(js_to_json(inp), '''{"duration": "00:01:07"}''')
 
     def test_js_to_json_edgecases(self):
         on = js_to_json("{abc_def:'1\\'\\\\2\\\\\\'3\"4'}")
@@ -776,7 +840,10 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(parse_filesize('2 MiB'), 2097152)
         self.assertEqual(parse_filesize('5 GB'), 5000000000)
         self.assertEqual(parse_filesize('1.2Tb'), 1200000000000)
+        self.assertEqual(parse_filesize('1.2tb'), 1200000000000)
         self.assertEqual(parse_filesize('1,24 KB'), 1240)
+        self.assertEqual(parse_filesize('1,24 kb'), 1240)
+        self.assertEqual(parse_filesize('8.5 megabytes'), 8500000)
 
     def test_parse_count(self):
         self.assertEqual(parse_count(None), None)
@@ -927,6 +994,7 @@ The first line
         self.assertEqual(cli_option({'proxy': '127.0.0.1:3128'}, '--proxy', 'proxy'), ['--proxy', '127.0.0.1:3128'])
         self.assertEqual(cli_option({'proxy': None}, '--proxy', 'proxy'), [])
         self.assertEqual(cli_option({}, '--proxy', 'proxy'), [])
+        self.assertEqual(cli_option({'retries': 10}, '--retries', 'retries'), ['--retries', '10'])
 
     def test_cli_valueless_option(self):
         self.assertEqual(cli_valueless_option(
@@ -990,6 +1058,14 @@ The first line
     def test_urshift(self):
         self.assertEqual(urshift(3, 1), 1)
         self.assertEqual(urshift(-3, 1), 2147483646)
+
+    def test_get_element_by_class(self):
+        html = '''
+            <span class="foo bar">nice</span>
+        '''
+
+        self.assertEqual(get_element_by_class('foo', html), 'nice')
+        self.assertEqual(get_element_by_class('no-such-class', html), None)
 
 if __name__ == '__main__':
     unittest.main()
